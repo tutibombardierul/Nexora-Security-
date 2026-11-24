@@ -1,114 +1,87 @@
 const {
   EmbedBuilder,
-  AuditLogEvent
+  PermissionsBitField
 } = require("discord.js");
 
+const fs = require("fs");
+const path = require("path");
+
+const CONFIG_PATH = path.join(__dirname, "../guild-config.json");
+
 const COLORS = {
-  INFO: 0x5865F2,
-  SUCCESS: 0x57F287,
-  WARNING: 0xFEE75C,
-  DANGER: 0xED4245,
-  SECURITY: 0x9B59B6
+  success: 0x2ECC71,
+  warning: 0xF1C40F,
+  danger: 0xE74C3C,
+  info: 0x3498DB,
+  security: 0x9B59B6
 };
 
-const EVENT_NAMES = {
-  memberJoin: "MEMBER JOINED",
-  memberLeave: "MEMBER LEFT",
-  messageDelete: "MESSAGE DELETED",
-  messageUpdate: "MESSAGE EDITED",
-  roleCreate: "ROLE CREATED",
-  roleDelete: "ROLE DELETED",
-  channelCreate: "CHANNEL CREATED",
-  channelDelete: "CHANNEL DELETED",
-  ban: "MEMBER BANNED",
-  timeout: "MEMBER TIMED OUT",
-  security: "SECURITY ALERT",
-  botAdd: "BOT ADDED"
-};
+function loadConfig() {
+  try {
+    if (!fs.existsSync(CONFIG_PATH)) return {};
+    return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+  } catch (error) {
+    console.error("[NEXORA] Failed to load guild configuration:", error);
+    return {};
+  }
+}
 
-const CHANNEL_NAMES = {
-  memberJoin: "member-logs",
-  memberLeave: "member-logs",
-  messageDelete: "message-logs",
-  messageUpdate: "message-logs",
-  roleCreate: "role-logs",
-  roleDelete: "role-logs",
-  channelCreate: "channel-logs",
-  channelDelete: "channel-logs",
-  ban: "moderation-logs",
-  timeout: "moderation-logs",
-  security: "security-logs",
-  botAdd: "security-logs"
-};
-
-async function sendLog(guild, type, data = {}) {
+async function sendLog(guild, {
+  title,
+  description,
+  color = COLORS.info,
+  fields = [],
+  event
+}) {
   try {
     if (!guild) return false;
 
-    const channelName = CHANNEL_NAMES[type];
+    const config = loadConfig();
+    const channelId = config[guild.id]?.logChannelId;
 
-    if (!channelName) {
-      console.warn(`[LOGGER] Unknown event: ${type}`);
+    if (!channelId) {
+      console.warn(`[NEXORA] No log channel configured for ${guild.name}.`);
       return false;
     }
 
-    const channel = guild.channels.cache.find(
-      ch =>
-        ch.name === channelName &&
-        ch.isTextBased() &&
-        ch.permissionsFor(guild.members.me)?.has("SendMessages")
-    );
+    const channel = await guild.channels.fetch(channelId).catch(() => null);
 
-    if (!channel) {
-      console.warn(
-        `[LOGGER] Missing channel: ${channelName}`
-      );
+    if (!channel || !channel.isTextBased() || !channel.guild) {
+      console.warn("[NEXORA] Configured log channel is unavailable.");
+      return false;
+    }
+
+    const botMember = guild.members.me;
+
+    if (!botMember) {
+      console.warn("[NEXORA] Bot member could not be resolved.");
+      return false;
+    }
+
+    const permissions = channel.permissionsFor(botMember);
+
+    if (!permissions?.has([
+      PermissionsBitField.Flags.ViewChannel,
+      PermissionsBitField.Flags.SendMessages,
+      PermissionsBitField.Flags.EmbedLinks
+    ])) {
+      console.warn("[NEXORA] Missing permissions in the configured log channel.");
       return false;
     }
 
     const embed = new EmbedBuilder()
-      .setColor(data.color || COLORS.INFO)
-      .setAuthor({
-        name: "NEXORA SECURITY • AUDIT SYSTEM"
-      })
-      .setTitle(EVENT_NAMES[type] || "SERVER EVENT")
-      .setDescription(
-        data.description || "An event was detected."
-      )
+      .setColor(color)
+      .setTitle(title || "NEXORA AUDIT")
+      .setDescription(description || "An event was detected.")
+      .addFields(fields.slice(0, 25))
       .setFooter({
-        text: `NEXORA AUDIT • ${guild.name}`
+        text: `NEXORA SECURITY • ${event || "AUDIT EVENT"}`
       })
       .setTimestamp();
 
-    if (data.executor) {
-      embed.addFields({
-        name: "Executor",
-        value: `<@${data.executor}>`,
-        inline: true
-      });
-    }
-
-    if (data.target) {
-      embed.addFields({
-        name: "Target",
-        value: String(data.target).slice(0, 1024),
-        inline: true
-      });
-    }
-
-    if (data.details) {
-      embed.addFields({
-        name: "Details",
-        value: String(data.details).slice(0, 1024)
-      });
-    }
-
-    await channel.send({
-      embeds: [embed],
-      allowedMentions: { parse: [] }
-    });
-
+    await channel.send({ embeds: [embed] });
     return true;
+
   } catch (error) {
     console.error("[NEXORA LOGGER ERROR]", error);
     return false;
@@ -117,7 +90,5 @@ async function sendLog(guild, type, data = {}) {
 
 module.exports = {
   sendLog,
-  COLORS,
-  AuditLogEvent
+  COLORS
 };
-        
