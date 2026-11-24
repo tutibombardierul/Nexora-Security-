@@ -9,6 +9,7 @@ const {
 
 const { checkAction } = require("./systems/antinuke");
 const { registerLogger } = require("./events/logger");
+const { registerModerationLogger } = require("./events/moderation");
 
 const client = new Client({
   intents: [
@@ -21,18 +22,20 @@ const client = new Client({
 });
 
 client.once(Events.ClientReady, bot => {
-  console.log("================================");
-  console.log("       NEXORA SECURITY");
-  console.log("================================");
+  console.log("======================================");
+  console.log("          NEXORA SECURITY");
+  console.log("======================================");
   console.log(`Status: ONLINE`);
   console.log(`Bot: ${bot.user.tag}`);
   console.log(`Servers: ${bot.guilds.cache.size}`);
 
   registerLogger(bot);
+  registerModerationLogger(bot);
 
   console.log("Audit System: CONNECTED");
+  console.log("Moderation Logs: CONNECTED");
   console.log("Anti-Nuke: CONNECTED");
-  console.log("================================");
+  console.log("======================================");
 });
 
 client.on(
@@ -47,7 +50,7 @@ client.on(Events.Error, error => {
 });
 
 if (!process.env.DISCORD_TOKEN) {
-  console.error("Missing DISCORD_TOKEN!");
+  console.error("[NEXORA] Missing DISCORD_TOKEN!");
   process.exit(1);
 }
 
