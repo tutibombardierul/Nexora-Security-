@@ -1,6 +1,12 @@
-const { EmbedBuilder, AuditLogEvent } = require("discord.js");
+
+const {
+  EmbedBuilder,
+  AuditLogEvent,
+  PermissionFlagsBits
+} = require("discord.js");
 
 const recentActions = new Map();
+const processedEntries = new Set();
 
 const LIMITS = {
   [AuditLogEvent.ChannelDelete]: 3,
@@ -9,19 +15,25 @@ const LIMITS = {
   [AuditLogEvent.WebhookCreate]: 3
 };
 
-async function checkAction(guild, type) {
+async function checkAction(guild, type, targetId) {
   const limit = LIMITS[type];
-
   if (!limit) return;
 
   try {
     const logs = await guild.fetchAuditLogs({
       type,
-      limit: 1
+      limit: 5
     });
 
-    const entry = logs.entries.first();
+    const entry = logs.entries.find(log =>
+      log.target?.id === targetId &&
+      Date.now() - log.createdTimestamp < 10000
+    );
+
     if (!entry || !entry.executor) return;
+    if (processedEntries.has(entry.id)) return;
+
+    processedEntries.add(entry.id);
 
     const executorId = entry.executor.id;
     const key = `${guild.id}:${type}:${executorId}`;
@@ -38,37 +50,34 @@ async function checkAction(guild, type) {
     if (actions.length >= limit) {
       const embed = new EmbedBuilder()
         .setColor(0xE74C3C)
-        .setTitle("🚨 Suspicious Administrative Activity")
+        .setTitle("NEXORA SECURITY | Threat Alert")
         .setDescription(
-          `A potentially dangerous action burst was detected.`
+          "Suspicious administrative activity detected."
         )
         .addFields(
           { name: "Executor", value: `<@${executorId}>` },
           { name: "Action", value: String(type) },
-          { name: "Detected actions", value: String(actions.length) }
+          { name: "Activity count", value: String(actions.length) }
         )
         .setTimestamp();
 
-      console.warn(
-        `[NEXORA SECURITY] Suspicious activity in ${guild.name}`
+      const channel = guild.channels.cache.find(
+        ch =>
+          ch.name === "security-logs" &&
+          ch.isTextBased()
       );
 
-      const logChannel = guild.channels.cache.find(
-        channel =>
-          channel.isTextBased() &&
-          channel.name === "security-logs"
-      );
-
-      if (logChannel) {
-        await logChannel.send({ embeds: [embed] });
+      if (channel) {
+        await channel.send({ embeds: [embed] });
       }
 
-      recentActions.set(key, []);
+      console.warn(
+        `[NEXORA SECURITY] Alert in ${guild.name}`
+      );
     }
   } catch (error) {
-    console.error("Anti-Nuke monitoring error:", error);
+    console.error("[Anti-Nuke]", error);
   }
 }
 
 module.exports = { checkAction };
-        
