@@ -8,6 +8,7 @@ const {
 } = require("discord.js");
 
 const { checkAction } = require("./systems/antinuke");
+const { registerLogger } = require("./events/logger");
 
 const client = new Client({
   intents: [
@@ -19,14 +20,19 @@ const client = new Client({
   ]
 });
 
-client.once(Events.ClientReady, (bot) => {
-  console.log("--------------------------------");
+client.once(Events.ClientReady, bot => {
+  console.log("================================");
   console.log("       NEXORA SECURITY");
-  console.log("--------------------------------");
+  console.log("================================");
   console.log(`Status: ONLINE`);
   console.log(`Bot: ${bot.user.tag}`);
   console.log(`Servers: ${bot.guilds.cache.size}`);
-  console.log("--------------------------------");
+
+  registerLogger(bot);
+
+  console.log("Audit System: CONNECTED");
+  console.log("Anti-Nuke: CONNECTED");
+  console.log("================================");
 });
 
 client.on(
@@ -36,7 +42,7 @@ client.on(
   }
 );
 
-client.on(Events.Error, (error) => {
+client.on(Events.Error, error => {
   console.error("[NEXORA ERROR]", error);
 });
 
