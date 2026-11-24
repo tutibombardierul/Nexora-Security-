@@ -1,35 +1,38 @@
 
 const { sendLog, COLORS } = require("./logger");
+const { getSettings } = require("./settings");
 
 const joinHistory = new Map();
 const alertCooldowns = new Map();
 
-const CONFIG = {
-  joinThreshold: 8,
-  timeWindow: 10000,
-  alertCooldown: 30000
-};
+const ALERT_COOLDOWN = 30000;
 
 async function checkRaid(member) {
-  if (!member || !member.guild) return;
+  if (!member || !member.guild || member.user.bot) return;
 
   const guildId = member.guild.id;
+  const settings = getSettings(guildId);
+  const config = settings.antiRaid;
+
+  if (!config.enabled) return;
+
   const now = Date.now();
+  const timeWindow = config.timeWindow * 1000;
 
   const history = joinHistory.get(guildId) || [];
 
   const recentJoins = history.filter(
-    timestamp => now - timestamp < CONFIG.timeWindow
+    timestamp => now - timestamp < timeWindow
   );
 
   recentJoins.push(now);
   joinHistory.set(guildId, recentJoins);
 
-  if (recentJoins.length < CONFIG.joinThreshold) return;
+  if (recentJoins.length < config.joinThreshold) return;
 
   const lastAlert = alertCooldowns.get(guildId) || 0;
 
-  if (now - lastAlert < CONFIG.alertCooldown) return;
+  if (now - lastAlert < ALERT_COOLDOWN) return;
 
   alertCooldowns.set(guildId, now);
   joinHistory.set(guildId, []);
@@ -47,12 +50,12 @@ async function checkRaid(member) {
       },
       {
         name: "Detection Window",
-        value: `${CONFIG.timeWindow / 1000} seconds`,
+        value: `${config.timeWindow} seconds`,
         inline: true
       },
       {
         name: "Detection Threshold",
-        value: `${CONFIG.joinThreshold} joins`,
+        value: `${config.joinThreshold} joins`,
         inline: true
       },
       {
