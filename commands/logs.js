@@ -1,92 +1,94 @@
-
 const {
   SlashCommandBuilder,
-  PermissionFlagsBits,
   ChannelType
 } = require("discord.js");
 
-const LOG_CHANNELS = [
-  "member-logs",
-  "message-logs",
-  "role-logs",
-  "channel-logs",
-  "moderation-logs",
-  "security-logs"
-];
+const fs = require("fs");
+const path = require("path");
+
+const CONFIG_PATH = path.join(__dirname, "../guild-config.json");
+
+function loadConfig() {
+  if (!fs.existsSync(CONFIG_PATH)) return {};
+  return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+}
+
+function saveConfig(config) {
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("logs")
-    .setDescription("Configurează sistemul de audit NEXORA")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand(subcommand =>
-      subcommand
-        .setName("setup")
-        .setDescription("Creează automat canalele de audit")
+    .setDescription("Manage the NEXORA audit system")
+    .addSubcommand(sub =>
+      sub.setName("set")
+        .setDescription("Set the channel for all audit logs")
+        .addChannelOption(option =>
+          option.setName("channel")
+            .setDescription("The channel where all logs will be sent")
+            .addChannelTypes(ChannelType.GuildText)
+            .setRequired(true)
+        )
+    )
+    .addSubcommand(sub =>
+      sub.setName("status")
+        .setDescription("View the current audit configuration")
+    )
+    .addSubcommand(sub =>
+      sub.setName("reset")
+        .setDescription("Reset the audit log configuration")
     ),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    if (!interaction.guild) return;
 
-    const guild = interaction.guild;
-
-    if (!guild) {
-      return interaction.editReply("Această comandă poate fi folosită doar pe un server.");
-    }
-
-    const categoryName = "NEXORA・AUDIT LOGS";
-
-    let category = guild.channels.cache.find(
-      channel =>
-        channel.name === categoryName &&
-        channel.type === ChannelType.GuildCategory
-    );
-
-    if (!category) {
-      category = await guild.channels.create({
-        name: categoryName,
-        type: ChannelType.GuildCategory
+    if (interaction.user.id !== interaction.guild.ownerId) {
+      return interaction.reply({
+        content: "Access denied. Only the server owner can manage NEXORA settings.",
+        ephemeral: true
       });
     }
 
-    const created = [];
-    const existing = [];
+    const config = loadConfig();
+    const guildId = interaction.guild.id;
+    const action = interaction.options.getSubcommand();
 
-    for (const channelName of LOG_CHANNELS) {
-      let channel = guild.channels.cache.find(
-        item =>
-          item.name === channelName &&
-          item.type === ChannelType.GuildText
-      );
+    if (action === "set") {
+      const channel = interaction.options.getChannel("channel");
 
-      if (channel) {
-        existing.push(channelName);
-        continue;
-      }
+      config[guildId] = {
+        ...config[guildId],
+        logChannelId: channel.id
+      };
 
-      await guild.channels.create({
-        name: channelName,
-        type: ChannelType.GuildText,
-        parent: category.id,
-        topic: `NEXORA SECURITY • ${channelName}`
+      saveConfig(config);
+
+      return interaction.reply({
+        content: `Audit logging has been configured successfully.\nAll logs will be sent to ${channel}.`,
+        ephemeral: true
       });
-
-      created.push(channelName);
     }
 
-    return interaction.editReply({
-      content:
-        `**NEXORA SECURITY — AUDIT SETUP**\n\n` +
-        `Categoria: ${category.name}\n` +
-        `Canale create: ${created.length}\n` +
-        `Canale deja existente: ${existing.length}\n\n` +
-        (created.length
-          ? `**Create:**\n${created.map(name => `• #${name}`).join("\n")}\n\n`
-          : "") +
-        (existing.length
-          ? `**Deja existente:**\n${existing.map(name => `• #${name}`).join("\n")}`
-          : "")
-    });
+    if (action === "status") {
+      const channelId = config[guildId]?.logChannelId;
+
+      return interaction.reply({
+        content: channelId
+          ? `**Audit Configuration**\nLog Channel: <#${channelId}>`
+          : "No audit log channel has been configured.",
+        ephemeral: true
+      });
+    }
+
+    if (action === "reset") {
+      delete config[guildId];
+      saveConfig(config);
+
+      return interaction.reply({
+        content: "The audit log configuration has been reset.",
+        ephemeral: true
+      });
+    }
   }
 };
-      
