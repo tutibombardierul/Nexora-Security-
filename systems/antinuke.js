@@ -1,5 +1,6 @@
 
-const { EmbedBuilder, AuditLogEvent } = require("discord.js");
+const { AuditLogEvent } = require("discord.js");
+const { sendLog, COLORS } = require("./logger");
 
 const recentActions = new Map();
 
@@ -11,6 +12,7 @@ const LIMITS = {
 };
 
 const WINDOW = 10000;
+const COOLDOWN = 30000;
 
 async function checkAction(entry, guild) {
   if (!entry || !guild || !entry.executor) return;
@@ -19,7 +21,6 @@ async function checkAction(entry, guild) {
   if (!limit) return;
 
   const executorId = entry.executor.id;
-
   const key = `${guild.id}:${entry.action}:${executorId}`;
   const now = Date.now();
 
@@ -34,15 +35,20 @@ async function checkAction(entry, guild) {
 
   if (actions.length < limit) return;
 
+  const cooldownKey = `cooldown:${key}`;
+  const lastAlert = recentActions.get(cooldownKey) || 0;
+
+  if (now - lastAlert < COOLDOWN) return;
+
+  recentActions.set(cooldownKey, now);
   recentActions.set(key, []);
 
-  const embed = new EmbedBuilder()
-    .setColor(0xE74C3C)
-    .setTitle("NEXORA SECURITY")
-    .setDescription(
-      "Suspicious administrative activity detected."
-    )
-    .addFields(
+  await sendLog(guild, {
+    title: "ANTI-NUKE ALERT",
+    description: "A suspicious number of sensitive server actions has been detected.",
+    color: COLORS.danger,
+    event: "ANTI-NUKE",
+    fields: [
       {
         name: "Executor",
         value: `<@${executorId}>`,
@@ -54,28 +60,19 @@ async function checkAction(entry, guild) {
         inline: true
       },
       {
-        name: "Detected actions",
-        value: String(actions.length),
+        name: "Detected Actions",
+        value: `${actions.length} actions within ${WINDOW / 1000} seconds`,
         inline: true
+      },
+      {
+        name: "Response",
+        value: "Alert generated. No automatic punishment was performed."
       }
-    )
-    .setFooter({
-      text: "NEXORA SECURITY • Anti-Nuke Monitoring"
-    })
-    .setTimestamp();
-
-  const logChannel = guild.channels.cache.find(
-    channel =>
-      channel.name === "security-logs" &&
-      channel.isTextBased()
-  );
-
-  if (logChannel) {
-    await logChannel.send({ embeds: [embed] });
-  }
+    ]
+  });
 
   console.warn(
-    `[NEXORA SECURITY] Suspicious activity in ${guild.name}`
+    `[NEXORA ANTI-NUKE] Suspicious activity detected in ${guild.name}.`
   );
 }
 
