@@ -8,6 +8,8 @@ const {
 } = require("discord.js");
 
 const { checkAction } = require("./systems/antinuke");
+const { checkRaid } = require("./systems/antiraid");
+
 const { registerLogger } = require("./events/logger");
 const { registerModerationLogger } = require("./events/moderation");
 
@@ -32,10 +34,15 @@ client.once(Events.ClientReady, bot => {
   registerLogger(bot);
   registerModerationLogger(bot);
 
-  console.log("Audit System: CONNECTED");
-  console.log("Moderation Logs: CONNECTED");
+  console.log("General Audit: CONNECTED");
+  console.log("Moderation Audit: CONNECTED");
   console.log("Anti-Nuke: CONNECTED");
+  console.log("Anti-Raid: CONNECTED");
   console.log("======================================");
+});
+
+client.on(Events.GuildMemberAdd, async member => {
+  await checkRaid(member);
 });
 
 client.on(
