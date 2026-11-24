@@ -1,12 +1,7 @@
 
-const {
-  EmbedBuilder,
-  AuditLogEvent,
-  PermissionFlagsBits
-} = require("discord.js");
+const { EmbedBuilder, AuditLogEvent } = require("discord.js");
 
 const recentActions = new Map();
-const processedEntries = new Set();
 
 const LIMITS = {
   [AuditLogEvent.ChannelDelete]: 3,
@@ -15,69 +10,73 @@ const LIMITS = {
   [AuditLogEvent.WebhookCreate]: 3
 };
 
-async function checkAction(guild, type, targetId) {
-  const limit = LIMITS[type];
+const WINDOW = 10000;
+
+async function checkAction(entry, guild) {
+  if (!entry || !guild || !entry.executor) return;
+
+  const limit = LIMITS[entry.action];
   if (!limit) return;
 
-  try {
-    const logs = await guild.fetchAuditLogs({
-      type,
-      limit: 5
-    });
+  const executorId = entry.executor.id;
 
-    const entry = logs.entries.find(log =>
-      log.target?.id === targetId &&
-      Date.now() - log.createdTimestamp < 10000
-    );
+  const key = `${guild.id}:${entry.action}:${executorId}`;
+  const now = Date.now();
 
-    if (!entry || !entry.executor) return;
-    if (processedEntries.has(entry.id)) return;
+  const previous = recentActions.get(key) || [];
 
-    processedEntries.add(entry.id);
+  const actions = previous.filter(
+    timestamp => now - timestamp < WINDOW
+  );
 
-    const executorId = entry.executor.id;
-    const key = `${guild.id}:${type}:${executorId}`;
-    const now = Date.now();
+  actions.push(now);
+  recentActions.set(key, actions);
 
-    const previous = recentActions.get(key) || [];
-    const actions = previous.filter(
-      time => now - time < 10000
-    );
+  if (actions.length < limit) return;
 
-    actions.push(now);
-    recentActions.set(key, actions);
+  recentActions.set(key, []);
 
-    if (actions.length >= limit) {
-      const embed = new EmbedBuilder()
-        .setColor(0xE74C3C)
-        .setTitle("NEXORA SECURITY | Threat Alert")
-        .setDescription(
-          "Suspicious administrative activity detected."
-        )
-        .addFields(
-          { name: "Executor", value: `<@${executorId}>` },
-          { name: "Action", value: String(type) },
-          { name: "Activity count", value: String(actions.length) }
-        )
-        .setTimestamp();
-
-      const channel = guild.channels.cache.find(
-        ch =>
-          ch.name === "security-logs" &&
-          ch.isTextBased()
-      );
-
-      if (channel) {
-        await channel.send({ embeds: [embed] });
+  const embed = new EmbedBuilder()
+    .setColor(0xE74C3C)
+    .setTitle("NEXORA SECURITY")
+    .setDescription(
+      "Suspicious administrative activity detected."
+    )
+    .addFields(
+      {
+        name: "Executor",
+        value: `<@${executorId}>`,
+        inline: true
+      },
+      {
+        name: "Action",
+        value: String(entry.action),
+        inline: true
+      },
+      {
+        name: "Detected actions",
+        value: String(actions.length),
+        inline: true
       }
+    )
+    .setFooter({
+      text: "NEXORA SECURITY • Anti-Nuke Monitoring"
+    })
+    .setTimestamp();
 
-      console.warn(
-        `[NEXORA SECURITY] Alert in ${guild.name}`
-      );
-    }
-  } catch (error) {
-    console.error("[Anti-Nuke]", error);
+  const logChannel = guild.channels.cache.find(
+    channel =>
+      channel.name === "security-logs" &&
+      channel.isTextBased()
+  );
+
+  if (logChannel) {
+    await logChannel.send({ embeds: [embed] });
   }
+
+  console.warn(
+    `[NEXORA SECURITY] Suspicious activity in ${guild.name}`
+  );
 }
 
 module.exports = { checkAction };
