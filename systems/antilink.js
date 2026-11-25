@@ -1,30 +1,30 @@
-
 const { sendLog, COLORS } = require("./logger");
+const { getSettings } = require("./settings");
 
 const alertCooldowns = new Map();
-
-const CONFIG = {
-  blockInvites: true,
-  detectExternalLinks: true,
-  alertCooldown: 30000
-};
+const ALERT_COOLDOWN = 30000;
 
 const INVITE_REGEX =
   /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\/[a-zA-Z0-9-]+/i;
 
 const URL_REGEX =
-  /https?:\/\/[^\s<]+/gi;
+  /https?:\/\/[^\s<]+/i;
 
 async function checkLinks(message) {
   if (!message.guild || message.author.bot) return;
 
+  const settings = getSettings(message.guild.id);
+  const config = settings.antiLink;
+
+  if (!config.enabled) return;
+
   const content = message.content || "";
 
   const hasInvite =
-    CONFIG.blockInvites && INVITE_REGEX.test(content);
+    config.blockInvites && INVITE_REGEX.test(content);
 
   const hasExternalLink =
-    CONFIG.detectExternalLinks && URL_REGEX.test(content);
+    config.detectExternalLinks && URL_REGEX.test(content);
 
   if (!hasInvite && !hasExternalLink) return;
 
@@ -33,7 +33,7 @@ async function checkLinks(message) {
 
   const lastAlert = alertCooldowns.get(key) || 0;
 
-  if (now - lastAlert < CONFIG.alertCooldown) return;
+  if (now - lastAlert < ALERT_COOLDOWN) return;
 
   alertCooldowns.set(key, now);
 
@@ -55,7 +55,9 @@ async function checkLinks(message) {
       },
       {
         name: "Link Type",
-        value: hasInvite ? "Discord Invite" : "External URL",
+        value: hasInvite
+          ? "Discord Invite"
+          : "External URL",
         inline: true
       },
       {
@@ -64,7 +66,7 @@ async function checkLinks(message) {
       },
       {
         name: "Response",
-        value: "Detection alert only. No automatic action was performed."
+        value: "Detection alert only. The message was not deleted."
       }
     ]
   });
