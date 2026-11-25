@@ -1,6 +1,7 @@
 
 const { AuditLogEvent } = require("discord.js");
 const { sendLog, COLORS } = require("./logger");
+const { isWhitelisted } = require("./whitelist");
 
 const recentActions = new Map();
 
@@ -17,10 +18,17 @@ const COOLDOWN = 30000;
 async function checkAction(entry, guild) {
   if (!entry || !guild || !entry.executor) return;
 
+  const executorId = entry.executor.id;
+
+  // Ignore the server owner, the bot itself and trusted users.
+  if (executorId === guild.ownerId) return;
+  if (executorId === guild.client.user?.id) return;
+  if (isWhitelisted(guild.id, executorId)) return;
+
   const limit = LIMITS[entry.action];
+
   if (!limit) return;
 
-  const executorId = entry.executor.id;
   const key = `${guild.id}:${entry.action}:${executorId}`;
   const now = Date.now();
 
@@ -45,7 +53,7 @@ async function checkAction(entry, guild) {
 
   await sendLog(guild, {
     title: "ANTI-NUKE ALERT",
-    description: "A suspicious number of sensitive server actions has been detected.",
+    description: "Suspicious sensitive server activity has been detected.",
     color: COLORS.danger,
     event: "ANTI-NUKE",
     fields: [
