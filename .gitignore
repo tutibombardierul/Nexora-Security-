@@ -1,0 +1,6 @@
+.env
+node_modules/
+
+guild-config.json
+guild-settings.json
+whitelist.json
