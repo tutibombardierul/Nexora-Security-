@@ -1,37 +1,42 @@
+
 const { sendLog, COLORS } = require("./logger");
+const { getSettings } = require("./settings");
 
 const messageHistory = new Map();
 const alertCooldowns = new Map();
 
-const CONFIG = {
-  messageThreshold: 5,
-  timeWindow: 5000,
-  alertCooldown: 30000
-};
+const ALERT_COOLDOWN = 30000;
 
 async function checkSpam(message) {
   if (!message.guild || message.author.bot) return;
 
   const guildId = message.guild.id;
   const userId = message.author.id;
+
+  const settings = getSettings(guildId);
+  const config = settings.antiSpam;
+
+  if (!config.enabled) return;
+
   const now = Date.now();
+  const timeWindow = config.timeWindow * 1000;
 
   const key = `${guildId}:${userId}`;
 
   const history = messageHistory.get(key) || [];
 
   const recentMessages = history.filter(
-    timestamp => now - timestamp < CONFIG.timeWindow
+    timestamp => now - timestamp < timeWindow
   );
 
   recentMessages.push(now);
   messageHistory.set(key, recentMessages);
 
-  if (recentMessages.length < CONFIG.messageThreshold) return;
+  if (recentMessages.length < config.messageThreshold) return;
 
   const lastAlert = alertCooldowns.get(key) || 0;
 
-  if (now - lastAlert < CONFIG.alertCooldown) return;
+  if (now - lastAlert < ALERT_COOLDOWN) return;
 
   alertCooldowns.set(key, now);
   messageHistory.set(key, []);
@@ -54,7 +59,7 @@ async function checkSpam(message) {
       },
       {
         name: "Detection Window",
-        value: `${CONFIG.timeWindow / 1000} seconds`,
+        value: `${config.timeWindow} seconds`,
         inline: true
       },
       {
